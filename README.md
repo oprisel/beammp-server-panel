@@ -44,7 +44,7 @@ This installer automatically sets up a **complete BeamMP server** with a **profe
 
 ```bash
 # Download and extract
-wget https://your-url/beammp-complete-installer.tar.gz
+wget https://github.com/oprisel/beammp-server-panel/archive/refs/heads/main.tar.gz
 tar -xzf beammp-complete-installer.tar.gz
 cd beammp-complete-installer
 ```
