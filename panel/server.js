@@ -20,11 +20,13 @@ const CONFIG = {
     configFile: process.env.CONFIG_FILE || 'ServerConfig.toml',
     resourcesPath: process.env.RESOURCES_PATH || '/mnt/stocare/beam/Resources/Client',
     serverLog: process.env.SERVER_LOG || '/mnt/stocare/beam/Server.log',
-    maxUploadSize: parseInt(process.env.MAX_UPLOAD_SIZE) || 2000
+    maxUploadSize: parseInt(process.env.MAX_UPLOAD_SIZE) || 5120
 };
 
-// Large file detection threshold (800MB)
-const MAX_ZIP_SIZE_FOR_DETECTION = 800 * 1024 * 1024;
+// Large file detection threshold (5GB) — zips larger than this are skipped
+// for in-memory zip scanning to avoid excessive CPU/memory use, but are
+// still listed as "large-file" rather than silently dropped.
+const MAX_ZIP_SIZE_FOR_DETECTION = 5 * 1024 * 1024 * 1024;
 
 // Detect a "map" by either the modern marker (levels/<name>/info.json)
 // or the legacy BeamNG format marker (levels/<name>/<name>.mis directly
@@ -483,7 +485,7 @@ app.post('/api/mods/upload', async (req, res) => {
         // Quick-check the uploaded zip right away so the user gets immediate
         // feedback instead of discovering "unknown"/wrong classification
         // only after a manual refresh.
-        let message = 'Fișier încărcat cu succes.';
+        let message = 'File uploaded successfully.';
         try {
             if (modFile.size <= MAX_ZIP_SIZE_FOR_DETECTION) {
                 const zip = new AdmZip(uploadPath);
@@ -491,13 +493,13 @@ app.post('/api/mods/upload', async (req, res) => {
                 const mapDetection = detectMapFromEntries(entries, modFile.name.replace('.zip', ''));
 
                 if (mapDetection.isMap) {
-                    message = `Hartă detectată: ${mapDetection.mapName}${mapDetection.legacy ? ' (format vechi, fără info.json)' : ''}.`;
+                    message = `Map detected: ${mapDetection.mapName}${mapDetection.legacy ? ' (legacy format, no info.json)' : ''}.`;
                 } else if (detectNestedZip(entries)) {
-                    message = '⚠️ Atenție: acest zip conține un alt .zip în interior, nu fișiere de mod direct. ' +
-                        'BeamMP nu îl poate încărca așa. Extrage zip-ul real din interior și încarcă-l pe acela, fără fișiere nelegate.';
+                    message = '⚠️ Warning: this zip contains another .zip inside it instead of mod files directly. ' +
+                        'BeamMP cannot load it like this. Extract the real mod zip from inside and upload that one, without unrelated extra files.';
                 }
             } else {
-                message = 'Fișier încărcat (fișier mare, >800MB — nu a fost analizat automat).';
+                message = `File uploaded (large file, over ${(MAX_ZIP_SIZE_FOR_DETECTION / (1024 * 1024 * 1024)).toFixed(0)}GB — not automatically analyzed).`;
             }
         } catch (detectErr) {
             console.error('Post-upload detection error:', detectErr.message);

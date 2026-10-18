@@ -287,8 +287,8 @@ function getModTypeLabel(type) {
         'ui': '🎨 UI',
         'script': '📜 Script',
         'asset': '🎨 Asset',
-        'large-file': '📦 Large file (neverificat, >800MB)',
-        'nested-zip': '⚠️ Zip invalid (conține alt .zip în interior)',
+        'large-file': '📦 Large file (not scanned, over threshold)',
+        'nested-zip': '⚠️ Invalid zip (contains another .zip inside)',
         'unknown': '❓ Unknown'
     };
     return labels[type] || labels.unknown;
@@ -415,7 +415,7 @@ function uploadFile(file) {
     const formData = new FormData();
     formData.append('mod', file);
 
-    setUploadProgress(true, 0, file.name, `Se încarcă... (0 / ${(file.size / (1024 * 1024)).toFixed(1)} MB)`);
+    setUploadProgress(true, 0, file.name, `Uploading... (0 / ${(file.size / (1024 * 1024)).toFixed(1)} MB)`);
 
     const xhr = new XMLHttpRequest();
 
@@ -424,7 +424,7 @@ function uploadFile(file) {
         const percent = Math.round((e.loaded / e.total) * 100);
         const loadedMb = (e.loaded / (1024 * 1024)).toFixed(1);
         const totalMb = (e.total / (1024 * 1024)).toFixed(1);
-        setUploadProgress(true, percent, file.name, `Se încarcă... (${loadedMb} / ${totalMb} MB)`);
+        setUploadProgress(true, percent, file.name, `Uploading... (${loadedMb} / ${totalMb} MB)`);
     });
 
     xhr.addEventListener('load', () => {
@@ -436,12 +436,12 @@ function uploadFile(file) {
         }
 
         if (xhr.status >= 200 && xhr.status < 300 && data && data.success) {
-            setUploadProgress(true, 100, file.name, 'Se procesează pe server (se verifică conținutul zip)...');
+            setUploadProgress(true, 100, file.name, 'Processing on server (scanning zip contents)...');
 
             // Give the server a moment to finish writing/analyzing, then refresh lists
             setTimeout(() => {
                 setUploadProgress(false, 0, '', '');
-                showToast(data.message || 'Fișier încărcat cu succes', 'success');
+                showToast(data.message || 'File uploaded successfully', 'success');
                 loadMods();
                 loadMaps();
                 document.getElementById('fileInput').value = '';
