@@ -380,6 +380,23 @@ Adjust:
 
 ## 📝 Changelog
 
+### Bugfix Update (2026-10-18)
+- **Upload progress bar**: the panel now shows real-time upload progress
+  (filename, MB sent / total, percentage) instead of a plain "Uploading..."
+  toast with no feedback
+- **Legacy map detection**: old BeamNG map exports that ship `.mis`/`.ter`
+  files without `info.json` are now correctly detected and listed as maps
+  instead of being misclassified as a generic "asset" mod
+- **Nested-zip detection**: uploads that are a wrapper `.zip` containing
+  another `.zip` inside (instead of mod files directly) are now flagged
+  as `nested-zip` with a clear warning, instead of showing "unknown"
+- **Large-file analysis threshold** raised from 800MB to 5GB, and default
+  max upload size raised from 2GB to 5GB, so bigger mod/map archives are
+  still scanned and classified correctly
+- **Installer fixes**: corrected the `MaxCars` config key name, removed
+  invalid systemd `StandardOutput`/`StandardError` append directives, and
+  fixed the `ufw allow` port syntax
+
 ### Version 1.0.0
 - Initial release
 - Complete automated installation
