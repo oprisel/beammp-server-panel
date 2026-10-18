@@ -287,6 +287,8 @@ function getModTypeLabel(type) {
         'ui': '🎨 UI',
         'script': '📜 Script',
         'asset': '🎨 Asset',
+        'large-file': '📦 Large file (neverificat, >800MB)',
+        'nested-zip': '⚠️ Zip invalid (conține alt .zip în interior)',
         'unknown': '❓ Unknown'
     };
     return labels[type] || labels.unknown;
@@ -382,39 +384,87 @@ function initUpload() {
     });
 }
 
-async function uploadFile(file) {
+function setUploadProgress(visible, percent, filename, statusText) {
+    const wrap = document.getElementById('uploadProgressWrap');
+    const bar = document.getElementById('uploadProgressBar');
+    const nameEl = document.getElementById('uploadProgressName');
+    const pctEl = document.getElementById('uploadProgressPercent');
+    const statusEl = document.getElementById('uploadProgressStatus');
+
+    if (!wrap) return;
+
+    if (visible) {
+        wrap.classList.add('show');
+    } else {
+        wrap.classList.remove('show');
+        return;
+    }
+
+    if (bar) bar.style.width = `${percent}%`;
+    if (pctEl) pctEl.textContent = `${percent}%`;
+    if (nameEl && filename) nameEl.textContent = filename;
+    if (statusEl && statusText) statusEl.textContent = statusText;
+}
+
+function uploadFile(file) {
     if (!file.name.endsWith('.zip')) {
         showToast('Only .zip files are allowed', 'error');
         return;
     }
-    
+
     const formData = new FormData();
     formData.append('mod', file);
-    
-    try {
-        showToast('Uploading...', 'info');
-        
-        const response = await fetch('/api/mods/upload', {
-            method: 'POST',
-            body: formData
-        });
-        
-        const data = await response.json();
-        
-        if (data.success) {
-            showToast(data.message, 'success');
-            loadMods();
-            loadMaps();
-            
-            // Reset file input
-            document.getElementById('fileInput').value = '';
-        } else {
-            showToast(data.error, 'error');
+
+    setUploadProgress(true, 0, file.name, `Se încarcă... (0 / ${(file.size / (1024 * 1024)).toFixed(1)} MB)`);
+
+    const xhr = new XMLHttpRequest();
+
+    xhr.upload.addEventListener('progress', (e) => {
+        if (!e.lengthComputable) return;
+        const percent = Math.round((e.loaded / e.total) * 100);
+        const loadedMb = (e.loaded / (1024 * 1024)).toFixed(1);
+        const totalMb = (e.total / (1024 * 1024)).toFixed(1);
+        setUploadProgress(true, percent, file.name, `Se încarcă... (${loadedMb} / ${totalMb} MB)`);
+    });
+
+    xhr.addEventListener('load', () => {
+        let data;
+        try {
+            data = JSON.parse(xhr.responseText);
+        } catch (err) {
+            data = null;
         }
-    } catch (error) {
-        console.error('Error uploading file:', error);
-        showToast('Failed to upload file', 'error');
-    }
+
+        if (xhr.status >= 200 && xhr.status < 300 && data && data.success) {
+            setUploadProgress(true, 100, file.name, 'Se procesează pe server (se verifică conținutul zip)...');
+
+            // Give the server a moment to finish writing/analyzing, then refresh lists
+            setTimeout(() => {
+                setUploadProgress(false, 0, '', '');
+                showToast(data.message || 'Fișier încărcat cu succes', 'success');
+                loadMods();
+                loadMaps();
+                document.getElementById('fileInput').value = '';
+            }, 500);
+        } else {
+            setUploadProgress(false, 0, '', '');
+            showToast((data && data.error) || 'Failed to upload file', 'error');
+        }
+    });
+
+    xhr.addEventListener('error', () => {
+        setUploadProgress(false, 0, '', '');
+        console.error('Error uploading file: network error');
+        showToast('Failed to upload file (network error)', 'error');
+    });
+
+    xhr.addEventListener('abort', () => {
+        setUploadProgress(false, 0, '', '');
+        showToast('Upload anulat', 'info');
+    });
+
+    xhr.open('POST', '/api/mods/upload');
+    xhr.send(formData);
 }
 
 // ==================== SERVER CONTROL ====================

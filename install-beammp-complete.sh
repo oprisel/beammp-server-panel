@@ -312,7 +312,7 @@ AuthKey = "$AUTH_KEY"
 Debug = false
 Private = true
 Port = $BEAMMP_PORT
-Cars = $MAX_CARS
+MaxCars = $MAX_CARS
 MaxPlayers = $MAX_PLAYERS
 Map = "/levels/gridmap_v2/info.json"
 Name = "$SERVER_NAME"
@@ -394,8 +394,6 @@ WorkingDirectory=$INSTALL_PATH/server
 ExecStart=$INSTALL_PATH/server/BeamMP-Server
 Restart=always
 RestartSec=10
-StandardOutput=append:$INSTALL_PATH/server/Server.log
-StandardError=append:$INSTALL_PATH/server/Server.log
 
 # Resource limits
 LimitNOFILE=65536
@@ -420,8 +418,6 @@ Environment="NODE_ENV=production"
 ExecStart=/usr/bin/node server.js
 Restart=always
 RestartSec=10
-StandardOutput=append:/var/log/beammp-panel.log
-StandardError=append:/var/log/beammp-panel-error.log
 
 # Security settings
 NoNewPrivileges=false
@@ -551,7 +547,7 @@ configure_firewall() {
     
     if command -v ufw &> /dev/null; then
         print_info "Configuring UFW firewall..."
-        sudo ufw allow $BEAMMP_PORT/tcp comment "BeamMP Server"
+        sudo ufw allow $BEAMMP_PORT comment "BeamMP Server"
         sudo ufw allow $NGINX_PORT/tcp comment "BeamMP Panel"
         print_success "Firewall rules added"
     else

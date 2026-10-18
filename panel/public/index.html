@@ -203,6 +203,46 @@
             border-color: #10b981;
             background: #d1fae5;
         }
+
+        .upload-progress-wrap {
+            display: none;
+            margin-top: 16px;
+            text-align: left;
+        }
+
+        .upload-progress-wrap.show {
+            display: block;
+        }
+
+        .upload-progress-filename {
+            font-size: 0.875rem;
+            color: #374151;
+            margin-bottom: 6px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .upload-progress-bar-bg {
+            width: 100%;
+            height: 16px;
+            background: #e5e7eb;
+            border-radius: 999px;
+            overflow: hidden;
+        }
+
+        .upload-progress-bar-fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #3b82f6, #10b981);
+            border-radius: 999px;
+            transition: width 0.15s ease;
+        }
+
+        .upload-progress-status {
+            font-size: 0.75rem;
+            color: #6b7280;
+            margin-top: 4px;
+        }
         
         .loading {
             display: none;
@@ -402,6 +442,17 @@
                             <button onclick="document.getElementById('fileInput').click()" class="btn btn-primary">
                                 <i class="fas fa-folder-open mr-2"></i>Browse Files
                             </button>
+
+                            <div class="upload-progress-wrap" id="uploadProgressWrap">
+                                <div class="upload-progress-filename">
+                                    <span id="uploadProgressName">-</span>
+                                    <span id="uploadProgressPercent">0%</span>
+                                </div>
+                                <div class="upload-progress-bar-bg">
+                                    <div class="upload-progress-bar-fill" id="uploadProgressBar"></div>
+                                </div>
+                                <div class="upload-progress-status" id="uploadProgressStatus">Se încarcă...</div>
+                            </div>
                         </div>
                     </div>
 

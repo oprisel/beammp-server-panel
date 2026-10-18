@@ -26,6 +26,68 @@ const CONFIG = {
 // Large file detection threshold (800MB)
 const MAX_ZIP_SIZE_FOR_DETECTION = 800 * 1024 * 1024;
 
+// Detect a "map" by either the modern marker (levels/<name>/info.json)
+// or the legacy BeamNG format marker (levels/<name>/<name>.mis directly
+// under the level folder, no info.json). Old map exports (pre-conversion)
+// only ship the legacy files and would otherwise be misclassified as a
+// generic "asset" mod.
+function detectMapFromEntries(entries, fallbackName) {
+    const entryNames = entries.map(e => e.entryName);
+
+    const infoJsonEntries = entries.filter(entry => {
+        const name = entry.entryName.toLowerCase();
+        return name.includes('levels/') && name.endsWith('info.json');
+    });
+
+    if (infoJsonEntries.length > 0) {
+        const levelEntry = infoJsonEntries[0];
+        const parts = levelEntry.entryName.split('/');
+        const levelIndex = parts.findIndex(p => p.toLowerCase() === 'levels');
+        const mapName = (levelIndex >= 0 && parts[levelIndex + 1]) ? parts[levelIndex + 1] : fallbackName;
+        return { isMap: true, mapName, legacy: false };
+    }
+
+    // Legacy fallback: a .mis file sitting directly inside levels/<name>/
+    const legacyMisEntry = entryNames.find(name => {
+        const lower = name.toLowerCase();
+        const parts = name.split('/');
+        const levelIndex = parts.findIndex(p => p.toLowerCase() === 'levels');
+        // parts = [..., "levels", "<mapname>", "<mapname>.mis"] -> length === levelIndex + 3
+        return levelIndex >= 0 && parts.length === levelIndex + 3 && lower.endsWith('.mis');
+    });
+
+    if (legacyMisEntry) {
+        const parts = legacyMisEntry.split('/');
+        const levelIndex = parts.findIndex(p => p.toLowerCase() === 'levels');
+        const mapName = parts[levelIndex + 1] || fallbackName;
+        return { isMap: true, mapName, legacy: true };
+    }
+
+    return { isMap: false, mapName: null, legacy: false };
+}
+
+// Detect a "zip containing a zip" upload: the user exported/zipped the
+// wrong folder and the real mod ended up nested one level deep inside
+// another .zip, alongside unrelated files. BeamMP can't load these as-is
+// (vehicle/map files must be at the top level of the resource zip), so we
+// flag it clearly instead of silently calling it "unknown".
+function detectNestedZip(entries) {
+    const nestedZipEntries = entries.filter(e => e.entryName.toLowerCase().endsWith('.zip'));
+    if (nestedZipEntries.length === 0) return false;
+
+    // If the top-level listing is basically just zip file(s) (+ a couple of
+    // stray files) with no recognizable BeamNG folders at all, it's a
+    // wrapper zip, not a real mod/map package.
+    const hasKnownStructure = entries.some(e => {
+        const name = e.entryName.toLowerCase();
+        return name.includes('vehicles/') || name.includes('levels/') ||
+               name.includes('ui/') || name.includes('lua/') ||
+               name.includes('art/') || name.includes('shapes/');
+    });
+
+    return !hasKnownStructure;
+}
+
 // Middleware
 app.use(express.json());
 app.use(express.static('public'));
@@ -169,32 +231,23 @@ async function listMaps() {
                     const zip = new AdmZip(filePath);
                     const entries = zip.getEntries();
                     
-                    // Check if it's a map
-                    const levelInfoEntries = entries.filter(entry => {
-                        const name = entry.entryName.toLowerCase();
-                        return name.includes('levels/') && name.endsWith('info.json');
-                    });
+                    // Check if it's a map (modern info.json or legacy .mis marker)
+                    const mapDetection = detectMapFromEntries(entries, file.replace('.zip', ''));
                     
-                    if (levelInfoEntries.length > 0) {
-                        let mapName = file.replace('.zip', '');
-                        
-                        const levelEntry = levelInfoEntries[0];
-                        const parts = levelEntry.entryName.split('/');
-                        const levelIndex = parts.findIndex(p => p.toLowerCase() === 'levels');
-                        if (levelIndex >= 0 && parts[levelIndex + 1]) {
-                            mapName = parts[levelIndex + 1];
-                        }
+                    if (mapDetection.isMap) {
+                        const mapName = mapDetection.mapName;
                         
                         maps.push({
                             file: file,
                             name: mapName,
                             path: `/levels/${mapName}/info.json`,
+                            legacy: mapDetection.legacy,
                             size: (stats.size / (1024 * 1024)).toFixed(2) + ' MB',
                             sizeBytes: stats.size,
                             modified: stats.mtime
                         });
                         
-                        console.log(`✓ Detected MAP: ${file} -> ${mapName}`);
+                        console.log(`✓ Detected MAP${mapDetection.legacy ? ' (legacy, no info.json)' : ''}: ${file} -> ${mapName}`);
                     }
                 } catch (zipError) {
                     console.error(`Error reading zip ${file}:`, zipError.message);
@@ -241,19 +294,20 @@ async function listMods() {
                     const zip = new AdmZip(filePath);
                     const entries = zip.getEntries();
                     
-                    // Check if it's a map
-                    const levelInfoEntries = entries.filter(entry => {
-                        const name = entry.entryName.toLowerCase();
-                        return name.includes('levels/') && name.endsWith('info.json');
-                    });
-                    
-                    const isMap = levelInfoEntries.length > 0;
+                    // Check if it's a map (modern info.json or legacy .mis marker)
+                    // -- maps are listed separately via listMaps(), not here.
+                    const mapDetection = detectMapFromEntries(entries, file.replace('.zip', ''));
+                    const isMap = mapDetection.isMap;
                     
                     if (!isMap) {
                         let type = 'unknown';
                         const entryNames = entries.map(e => e.entryName.toLowerCase());
-                        
-                        if (entryNames.some(e => e.includes('vehicles/') || e.includes('.jbeam') || e.includes('.pc'))) {
+
+                        if (detectNestedZip(entries)) {
+                            // The archive is basically a wrapper around another
+                            // .zip (wrong export), not a real mod BeamMP can load.
+                            type = 'nested-zip';
+                        } else if (entryNames.some(e => e.includes('vehicles/') || e.includes('.jbeam') || e.includes('.pc'))) {
                             type = 'vehicle';
                         } else if (entryNames.some(e => e.includes('ui/'))) {
                             type = 'ui';
@@ -425,10 +479,33 @@ app.post('/api/mods/upload', async (req, res) => {
         await modFile.mv(uploadPath);
         
         console.log(`✓ Uploaded: ${modFile.name} (${(modFile.size / (1024 * 1024)).toFixed(2)} MB)`);
+
+        // Quick-check the uploaded zip right away so the user gets immediate
+        // feedback instead of discovering "unknown"/wrong classification
+        // only after a manual refresh.
+        let message = 'Fișier încărcat cu succes.';
+        try {
+            if (modFile.size <= MAX_ZIP_SIZE_FOR_DETECTION) {
+                const zip = new AdmZip(uploadPath);
+                const entries = zip.getEntries();
+                const mapDetection = detectMapFromEntries(entries, modFile.name.replace('.zip', ''));
+
+                if (mapDetection.isMap) {
+                    message = `Hartă detectată: ${mapDetection.mapName}${mapDetection.legacy ? ' (format vechi, fără info.json)' : ''}.`;
+                } else if (detectNestedZip(entries)) {
+                    message = '⚠️ Atenție: acest zip conține un alt .zip în interior, nu fișiere de mod direct. ' +
+                        'BeamMP nu îl poate încărca așa. Extrage zip-ul real din interior și încarcă-l pe acela, fără fișiere nelegate.';
+                }
+            } else {
+                message = 'Fișier încărcat (fișier mare, >800MB — nu a fost analizat automat).';
+            }
+        } catch (detectErr) {
+            console.error('Post-upload detection error:', detectErr.message);
+        }
         
         res.json({
             success: true,
-            message: 'File uploaded successfully. Refresh to see it.',
+            message,
             filename: modFile.name,
             size: (modFile.size / (1024 * 1024)).toFixed(2) + ' MB'
         });
@@ -576,7 +653,7 @@ app.get('/api/health', (req, res) => {
 
 // ==================== START SERVER ====================
 
-app.listen(CONFIG.port, () => {
+app.listen(CONFIG.port, '127.0.0.1', () => {
     console.log(`🚀 BeamMP Panel running on http://localhost:${CONFIG.port}`);
     console.log(`📁 Resources path: ${CONFIG.resourcesPath}`);
     console.log(`⚙️  Config file: ${path.join(CONFIG.beammpPath, CONFIG.configFile)}`);
