@@ -380,7 +380,7 @@ Adjust:
 
 ## 📝 Changelog
 
-### Bugfix Update (2026-10-18)
+### Version 1.1.0 (2026-10-18) — Bugfix Update
 - **Upload progress bar**: the panel now shows real-time upload progress
   (filename, MB sent / total, percentage) instead of a plain "Uploading..."
   toast with no feedback

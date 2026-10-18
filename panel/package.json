@@ -1,6 +1,6 @@
 {
   "name": "beammp-panel",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "BeamMP Server Administration Panel",
   "main": "server.js",
   "scripts": {
